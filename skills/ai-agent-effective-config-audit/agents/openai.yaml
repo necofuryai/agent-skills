@@ -1,0 +1,4 @@
+interface:
+  display_name: "AI Agent Effective Config Audit"
+  short_description: "Trace agent settings from declaration to runtime behavior"
+  default_prompt: "Use $ai-agent-effective-config-audit to trace this coding-agent setting from documentation through configured, loaded/effective, and observed state without changing it."

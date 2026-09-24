@@ -1,0 +1,4 @@
+interface:
+  display_name: "Dependency PR Lifecycle"
+  short_description: "Safely assess and advance dependency PR queues"
+  default_prompt: "Use $dependency-pr-lifecycle to assess this repository's Renovate and Dependabot pull-request queue and report the next safe action."

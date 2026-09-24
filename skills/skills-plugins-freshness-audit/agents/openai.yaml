@@ -1,0 +1,6 @@
+interface:
+  display_name: "Skills & Plugins Freshness Audit"
+  short_description: "Read-only upstream drift checks for skills and plugins"
+  default_prompt: "Use $skills-plugins-freshness-audit to audit my current skills and plugins against their upstream sources without changing installed state."
+policy:
+  allow_implicit_invocation: true
