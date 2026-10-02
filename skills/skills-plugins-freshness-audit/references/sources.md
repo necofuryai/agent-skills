@@ -73,7 +73,60 @@ Classify freshness by evidence source:
 - Remote managed sources: report the installed version. If the CLI exposes no authoritative latest version or update status, freshness is `unknown`.
 - Custom Git marketplaces: compare the configured revision with the remote revision using read-only API/`git ls-remote` evidence only. Do not run an upgrade.
 
+### Managed distribution evidence and update ownership
+
+Collect these comparisons separately rather than flattening all missing evidence into an update blocker:
+
+| Comparison | Required evidence | What a match establishes |
+| --- | --- | --- |
+| bundled release assignment | Current application resource manifest, materialized marketplace manifest, installed cache manifest | The installed manifest version matches this application build's assigned bundle |
+| remote release assignment | Current server-installed record plus the same source ID's installed cache manifest | The cache manifest version matches the release assigned to this account |
+| catalog release observation | Authoritative catalog release version, source ID, fetch timestamp, and verified account/scope binding | Equality to that observed catalog snapshot, with its age stated |
+| full payload integrity | Permitted file content, type and mode from the installed and mapped distribution trees, with `content_complete=true` | Complete equality for the stated distribution and content policy |
+
+A release-assignment match does not establish public-latest freshness or full payload integrity. Keep the main Current/Update candidate/Local drift/Unknown classification scoped to the fields actually verified. When the assigned release matches but a latest release cannot be established, report the match and the remaining latest-version evidence gap; do not describe that situation as a failed update.
+
+Preserve the observed CLI schema. In Codex CLI 0.159.2, remote rows project `version = local_version.or(version)` and omit the separate catalog version. Here `local_version` comes from the server-installed record, not a local disk inspection. Compare the CLI value with the cache manifest yourself, and verify this mapping again when the CLI implementation/schema changes. Evidence: [CLI projection](https://github.com/openai/codex/blob/rust-v0.159.2/codex-rs/cli/src/plugin_cmd.rs), [remote summary](https://github.com/openai/codex/blob/rust-v0.159.2/codex-rs/core-plugins/src/remote.rs).
+
+If existing `~/.codex/cache/remote_plugin_catalog` metadata is used, preflight its paths first and project only the audited IDs' version/status/policy fields plus `fetched_at`. Do not dump or hash the whole catalog, signed bundle URLs, credentials, or unrelated records. Record cache age and whether its active account/scope binding was verified. Missing entries in a cached catalog are not proof of removal. The current cache TTL is three hours; verify the active implementation before relying on it.
+
+These CLI status commands can refresh catalog metadata on disk. Record any observed discovery-cache activity separately from installed payload/configuration changes. Do not claim the commands are completely side-effect-free. A fresh app-server or public `plugin/list` probe is not a read-only fallback: startup/listing can schedule bundle installation and stale-cache removal. Do not launch that probe inside this audit. Evidence: [listing handler](https://github.com/openai/codex/blob/rust-v0.159.2/codex-rs/app-server/src/request_processors/plugins.rs), [manager background tasks](https://github.com/openai/codex/blob/rust-v0.159.2/codex-rs/core-plugins/src/manager.rs), [catalog cache](https://github.com/openai/codex/blob/rust-v0.159.2/codex-rs/core-plugins/src/remote/catalog_cache.rs).
+
+Remote managed bundles normally reconcile against the server's authoritative installed snapshot. Bundled plugins reconcile against the current application's resources. A generated `bundledContentVariant` can be a supported materialization transform; verify the current transform before calling it drift. Git marketplace upgrade commands are not a general updater for these distributions. Investigate an updater error or an assigned-release/cache mismatch before proposing a reinstall, cache deletion, private RPC, or feature override. Evidence: [remote bundle reconciliation](https://github.com/openai/codex/blob/rust-v0.159.2/codex-rs/core-plugins/src/remote/remote_installed_plugin_sync.rs).
+
+### Deep research availability
+
+For an explicit `deep-research-work@openai-curated-remote` watch, retain its exact source ID and distinguish installed, available, and absent. Observe another name/ID as a separate candidate until authoritative evidence establishes its relationship. Current application code also defines `deep-research@openai-bundled` behind a `deepResearch` eligibility flag; the declaration and its default value do not prove that flag is effective or that it replaces the remote plugin. Native Work deep research and the specific plugin's distribution are separate evidence surfaces. If the exact plugin is unavailable, report the missing availability evidence rather than inventing a local update error or forcing a feature flag. The account/workspace-dependent product entry points are documented in the [official web-search guide](https://learn.chatgpt.com/docs/web-search).
+
 An empty `available` array proves only that the command returned no available entries under its current semantics. It does not prove every installed plugin is current. When a prior verified report exists, compare plugin name, source, version, and enabled state; otherwise historical change is `unknown`.
+
+## Codex embedded system skills
+
+System skills under the verified deprecated root's `.system` directory are materialized by the active Codex executable. They have no independent package version or per-skill updater.
+
+- Resolve the active executable and its version, then identify the matching authoritative `openai/codex` release commit. The current source mapping is `codex-rs/skills/src/assets/samples/<skill-name>`; verify it for that release rather than guessing from a name.
+- Compare the full local inventory with that release's embedded assets after metadata preflight. The `.codex-system-skills.marker` is a distribution fingerprint, not a substitute for content evidence.
+- Inspect the release's materialization code when comparing modes. In 0.159.2 the writer uses `fs::write` without preserving source executable flags, so generated regular files can be `100644` even when their source Git mode is `100755`. Record this verified normalization; do not repair it with `chmod` merely to match the source tree. See the [release materializer](https://github.com/openai/codex/blob/rust-v0.159.2/codex-rs/skills/src/lib.rs).
+- Scope Current to the installed executable's distribution. Whether a newer application/CLI release is available is a separate client-update check. Handle updates through the ordinary client distribution route, preserving user release pins and the restart authorization boundary.
+
+## Legacy curated and standalone skill copies
+
+The existing `~/.codex/vendor_imports/skills` Git worktree can retain the authoritative source record for legacy copies. Verify its actual remote, revision, status, and correspondence with installed files before using it. For a verified `https://github.com/openai/skills.git` import, these full-distribution mappings include the wrapper scripts and resources, not just an original author's credited file:
+
+| Installed identity | Source subtree |
+| --- | --- |
+| playwright | `skills/.curated/playwright` |
+| screenshot | `skills/.curated/screenshot` |
+| security-best-practices | `skills/.curated/security-best-practices` |
+| security-threat-model | `skills/.curated/security-threat-model` |
+| sentry | `skills/.curated/sentry` |
+| hatch-pet | `skills/.curated/hatch-pet` base only |
+
+Compare installed/vendor/upstream file sets, content and Git modes. Author attribution in a NOTICE file can differ from the actual distribution repository. A current legacy snapshot match does not mean the old distribution is actively maintained: [openai/skills](https://github.com/openai/skills) is deprecated. A move to a plugin, different ID, or different root is a separate migration, not a normal update.
+
+For `hatch-pet`, preserve verified local v2/8x11 functionality, look-direction handling, scripts and tests as a custom fork. Compare the known curated base only to describe upstream differences; do not overwrite the complete local fork to make it equal to that base.
+
+Reviewed installation records can establish `apple-design`'s community source as `emilkowalski/skills`, subtree `skills/apple-design`. Verify the record before applying that mapping to a copy; it is not an Apple-official distribution. Record the initial fixed revision, current content, and an explicit user pin policy separately. If the current copy matches published upstream but differs from the initial artifact and the update trail is unclear, report both facts and preserve it. Do not infer permission to repin or overwrite it from a latest-content match.
 
 ## Other declared upstreams
 
